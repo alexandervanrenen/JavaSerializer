@@ -1,0 +1,141 @@
+package main;
+
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.ByteBuffer;
+
+public class Serializer implements ISerializer {
+
+	/* (non-Javadoc)
+	 * @see main.ISerializer#marshal(java.lang.Object)
+	 */
+	@Override
+	public byte[] marshal(Object data) {
+		// Prepare result structures =)
+		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		DataOutputStream dos = new DataOutputStream(buffer);
+
+		try {
+			marshalRec(data, dos);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+		return buffer.toByteArray();
+	}
+
+	/** Writes the given object into the output stream. This method gets called
+	 * recursively and does not create streams for writing data. */
+	private void marshalRec(Object data, DataOutputStream dos) throws IOException {
+		// Serialize each field 8)
+		Field[] declaredFields = data.getClass().getDeclaredFields();
+		for (Field field : declaredFields) { // TODO sort fields
+			if (field.isAnnotationPresent(Attribute.class)) {
+				try {
+					serializeSingle(field.get(data), dos);
+				} catch (IllegalArgumentException | IllegalAccessException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+
+	/** Writes a single field into the stream. */
+	private void serializeSingle(Object data, DataOutputStream dos) throws IOException {
+		// Just write to out stream
+		if (data.getClass() == Byte.class)
+			dos.writeByte((Byte) data);
+		else if (data.getClass() == Short.class)
+			dos.writeInt((Short) data);
+		else if (data.getClass() == Character.class)
+			dos.writeChar((Character) data);
+		else if (data.getClass() == Integer.class)
+			dos.writeInt((Integer) data);
+		else if (data.getClass() == Long.class)
+			dos.writeLong((Long) data);
+		else if (data.getClass() == Float.class)
+			dos.writeFloat((Float) data);
+		else if (data.getClass() == Double.class)
+			dos.writeDouble((Double) data);
+		else if (data.getClass() == String.class) {
+			dos.writeInt(((String) data).length());
+			dos.write(((String) data).getBytes());
+		} else
+			marshalRec(data, dos);
+	}
+
+	/* (non-Javadoc)
+	 * @see main.ISerializer#unmarshal(java.lang.Class, byte[])
+	 */
+	@Override
+	public Object unmarshal(Class<?> resultType, byte[] buffer) {
+		// Prepare result structures =)
+		ByteBuffer bb = ByteBuffer.wrap(buffer);
+
+		return unmarshalRec(resultType, bb);
+	}
+
+	/** Reads the given buffer into a new object of type resultType. This method
+	 * gets called recursively and does not create streams for reading data. */
+	private Object unmarshalRec(Class<?> resultType, ByteBuffer bb) {
+		// Create object
+		Object result = null;
+		try {
+			Constructor<?> constructor = resultType.getDeclaredConstructor();
+			result = constructor.newInstance((Object[]) null);
+		} catch (NoSuchMethodException | SecurityException e1) {
+			e1.printStackTrace();
+		} catch (InstantiationException e) {
+			e.printStackTrace();
+		} catch (IllegalAccessException e) {
+			e.printStackTrace();
+		} catch (IllegalArgumentException e) {
+			e.printStackTrace();
+		} catch (InvocationTargetException e) {
+			e.printStackTrace();
+		}
+
+		// Deserialize into created object
+		Field[] declaredFields = result.getClass().getDeclaredFields();
+		for (Field field : declaredFields) { // TODO sort fields
+			if (field.isAnnotationPresent(Attribute.class)) {
+				try {
+					field.set(result, deserializeSingle(field, bb));
+				} catch (IllegalArgumentException | IllegalAccessException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/** Reads the specified field from the buffer. */
+	private Object deserializeSingle(Field field, ByteBuffer bb) {
+		// Just read from stream
+		if (field.getType() == Byte.class || field.getType() == byte.class)
+			return bb.get();
+		else if (field.getType() == Short.class || field.getType() == short.class)
+			return bb.getShort();
+		else if (field.getType() == Character.class || field.getType() == char.class)
+			return bb.getChar();
+		else if (field.getType() == Integer.class || field.getType() == int.class)
+			return bb.getInt();
+		else if (field.getType() == Long.class || field.getType() == long.class)
+			return bb.getLong();
+		else if (field.getType() == Float.class || field.getType() == float.class)
+			return bb.getFloat();
+		else if (field.getType() == Double.class || field.getType() == double.class)
+			return bb.getDouble();
+		else if (field.getType() == String.class) {
+			byte[] nameBuffer = new byte[bb.getInt()];
+			bb.get(nameBuffer);
+			return new String(nameBuffer);
+		} else
+			return unmarshalRec(field.getType(), bb);
+	}
+}
