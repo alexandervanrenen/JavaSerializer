@@ -20,6 +20,7 @@ public class TestDriver {
 		dataToBeSerialized.data.getPersonArray()[0] = new Person(123, 321);
 		dataToBeSerialized.data.getPersonArray()[1] = new Person(2, 1);
 		dataToBeSerialized.data.getPersonArray()[2] = new Person(5, 3);
+		dataToBeSerialized.data.getEnergy().add(new Integer(2));
 
 		// Serialize
 		ISerializer serializer = new Serializer();

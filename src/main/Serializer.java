@@ -7,8 +7,15 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.TypeVariable;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 public class Serializer implements ISerializer {
 
@@ -71,8 +78,14 @@ public class Serializer implements ISerializer {
 			dos.writeInt(Array.getLength(data));
 			for (int i = 0; i < Array.getLength(data); i++)
 				serializeSingle(Array.get(data, i), dos);
-		} else
+		} else if (Collection.class.isAssignableFrom(data.getClass())) {
+			Collection<?> collection = (Collection<?>) data;
+			dos.writeInt(collection.size());
+			for (Object object : collection)
+				serializeSingle(object, dos);
+		} else {
 			marshalRec(data, dos);
+		}
 	}
 
 	/* (non-Javadoc)
@@ -89,21 +102,7 @@ public class Serializer implements ISerializer {
 	 * gets called recursively and does not create streams for reading data. */
 	private Object unmarshalRec(Class<?> resultType, ByteBuffer bb) {
 		// Create object
-		Object result = null;
-		try {
-			Constructor<?> constructor = resultType.getDeclaredConstructor();
-			result = constructor.newInstance((Object[]) null);
-		} catch (NoSuchMethodException | SecurityException e1) {
-			e1.printStackTrace();
-		} catch (InstantiationException e) {
-			e.printStackTrace();
-		} catch (IllegalAccessException e) {
-			e.printStackTrace();
-		} catch (IllegalArgumentException e) {
-			e.printStackTrace();
-		} catch (InvocationTargetException e) {
-			e.printStackTrace();
-		}
+		Object result = createObject(resultType);
 
 		// Deserialize into created object
 		Field[] declaredFields = result.getClass().getDeclaredFields();
@@ -149,8 +148,46 @@ public class Serializer implements ISerializer {
 			for (int i = 0; i < length; i++)
 				Array.set(buffer, i, deserializeSingle(type.getComponentType(), bb));
 			return buffer;
-		} else
-			return unmarshalRec(type, bb);
+		} else if (Collection.class.isAssignableFrom(type)) {
+			int length = bb.getInt();
+			Collection collection = createCollection(type);
+			TypeVariable<?>[] typeParameters = collection.getClass().getTypeParameters();
+			for (int i = 0; i < length; i++)
+				collection.add(deserializeSingle(Integer.class, bb)); // TODO: find type of collection
+			return collection;
+		}
+		return unmarshalRec(type, bb);
+	}
+
+	private Collection<?> createCollection(Class<?> type) {
+		if (!type.isInterface())
+			return (Collection<?>) createObject(type);
+
+		if (List.class.isAssignableFrom(type))
+			return new ArrayList();
+
+		if (Set.class.isAssignableFrom(type))
+			return new TreeSet();
+
+		throw new RuntimeException("unknown container");
+	}
+
+	private Object createObject(Class<?> resultType) {
+		try {
+			Constructor<?> constructor = resultType.getDeclaredConstructor();
+			return constructor.newInstance((Object[]) null);
+		} catch (NoSuchMethodException | SecurityException e1) {
+			e1.printStackTrace();
+		} catch (InstantiationException e) {
+			e.printStackTrace();
+		} catch (IllegalAccessException e) {
+			e.printStackTrace();
+		} catch (IllegalArgumentException e) {
+			e.printStackTrace();
+		} catch (InvocationTargetException e) {
+			e.printStackTrace();
+		}
+		throw new RuntimeException();
 	}
 
 	private FieldComparator comparator = new FieldComparator();
