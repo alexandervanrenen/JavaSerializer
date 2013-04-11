@@ -15,7 +15,11 @@ public class TestDriver {
 		dataToBeSerialized.aInt = 42;
 		dataToBeSerialized.aInteger = 1729;
 		dataToBeSerialized.aString = "schazam";
-		dataToBeSerialized.data.a = 28;
+		dataToBeSerialized.data.setA(28);
+		dataToBeSerialized.data.getMyArray()[3] = 5;
+		dataToBeSerialized.data.getPersonArray()[0] = new Person(123, 321);
+		dataToBeSerialized.data.getPersonArray()[1] = new Person(2, 1);
+		dataToBeSerialized.data.getPersonArray()[2] = new Person(5, 3);
 
 		// Serialize
 		ISerializer serializer = new Serializer();

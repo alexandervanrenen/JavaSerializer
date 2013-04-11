@@ -3,16 +3,17 @@ package main;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class Serializer implements ISerializer {
 
 	/* (non-Javadoc)
-	 * @see main.ISerializer#marshal(java.lang.Object)
-	 */
+	 * @see main.ISerializer#marshal(java.lang.Object) */
 	@Override
 	public byte[] marshal(Object data) {
 		// Prepare result structures =)
@@ -33,9 +34,11 @@ public class Serializer implements ISerializer {
 	private void marshalRec(Object data, DataOutputStream dos) throws IOException {
 		// Serialize each field 8)
 		Field[] declaredFields = data.getClass().getDeclaredFields();
-		for (Field field : declaredFields) { // TODO sort fields
+		Arrays.sort(declaredFields, comparator);
+		for (Field field : declaredFields) {
 			if (field.isAnnotationPresent(Attribute.class)) {
 				try {
+					field.setAccessible(true);
 					serializeSingle(field.get(data), dos);
 				} catch (IllegalArgumentException | IllegalAccessException e) {
 					e.printStackTrace();
@@ -64,13 +67,16 @@ public class Serializer implements ISerializer {
 		else if (data.getClass() == String.class) {
 			dos.writeInt(((String) data).length());
 			dos.write(((String) data).getBytes());
+		} else if (data.getClass().isArray()) {
+			dos.writeInt(Array.getLength(data));
+			for (int i = 0; i < Array.getLength(data); i++)
+				serializeSingle(Array.get(data, i), dos);
 		} else
 			marshalRec(data, dos);
 	}
 
 	/* (non-Javadoc)
-	 * @see main.ISerializer#unmarshal(java.lang.Class, byte[])
-	 */
+	 * @see main.ISerializer#unmarshal(java.lang.Class, byte[]) */
 	@Override
 	public Object unmarshal(Class<?> resultType, byte[] buffer) {
 		// Prepare result structures =)
@@ -101,10 +107,12 @@ public class Serializer implements ISerializer {
 
 		// Deserialize into created object
 		Field[] declaredFields = result.getClass().getDeclaredFields();
-		for (Field field : declaredFields) { // TODO sort fields
+		Arrays.sort(declaredFields, comparator);
+		for (Field field : declaredFields) {
 			if (field.isAnnotationPresent(Attribute.class)) {
 				try {
-					field.set(result, deserializeSingle(field, bb));
+					field.setAccessible(true);
+					field.set(result, deserializeSingle(field.getType(), bb));
 				} catch (IllegalArgumentException | IllegalAccessException e) {
 					e.printStackTrace();
 				}
@@ -115,27 +123,35 @@ public class Serializer implements ISerializer {
 	}
 
 	/** Reads the specified field from the buffer. */
-	private Object deserializeSingle(Field field, ByteBuffer bb) {
+	private Object deserializeSingle(Class<?> type, ByteBuffer bb) {
 		// Just read from stream
-		if (field.getType() == Byte.class || field.getType() == byte.class)
+		if (type == Byte.class || type == byte.class)
 			return bb.get();
-		else if (field.getType() == Short.class || field.getType() == short.class)
+		else if (type == Short.class || type == short.class)
 			return bb.getShort();
-		else if (field.getType() == Character.class || field.getType() == char.class)
+		else if (type == Character.class || type == char.class)
 			return bb.getChar();
-		else if (field.getType() == Integer.class || field.getType() == int.class)
+		else if (type == Integer.class || type == int.class)
 			return bb.getInt();
-		else if (field.getType() == Long.class || field.getType() == long.class)
+		else if (type == Long.class || type == long.class)
 			return bb.getLong();
-		else if (field.getType() == Float.class || field.getType() == float.class)
+		else if (type == Float.class || type == float.class)
 			return bb.getFloat();
-		else if (field.getType() == Double.class || field.getType() == double.class)
+		else if (type == Double.class || type == double.class)
 			return bb.getDouble();
-		else if (field.getType() == String.class) {
+		else if (type == String.class) {
 			byte[] nameBuffer = new byte[bb.getInt()];
 			bb.get(nameBuffer);
 			return new String(nameBuffer);
+		} else if (type.isArray()) {
+			int length = bb.getInt();
+			Object buffer = Array.newInstance(type.getComponentType(), length);
+			for (int i = 0; i < length; i++)
+				Array.set(buffer, i, deserializeSingle(type.getComponentType(), bb));
+			return buffer;
 		} else
-			return unmarshalRec(field.getType(), bb);
+			return unmarshalRec(type, bb);
 	}
+
+	private FieldComparator comparator = new FieldComparator();
 }
